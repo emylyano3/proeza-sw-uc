@@ -14,8 +14,8 @@ cache:
 install:
     - pip install -U platformio
 
-before_script: 
-    - cd wfmSwitch
+# before_script: 
+#     - cd wfmSwitch
 
 script:
     - platformio run
