@@ -15,12 +15,34 @@ void moduleRun () {
 }
 
 void callback(char* topic, unsigned char* payload, unsigned int length) {
-  int state;
-  if (STATE_INVALID == (state = translateMessage(topic, payload, length))) {
-    Serial.printf("Invalid state [%s]\n", state);
+  Serial.printf("Message arrived. Topic: [%s]. Length: [%d]\n", topic, length);
+  if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
+    processSwitchCommand(payload, length);
+  } else {
+    Serial.println(F("Unknown topic"));
+  }
+}
+
+void processSwitchCommand(unsigned char* payload, unsigned int length) {
+  if (length != 1 || !payload) {
+    Serial.printf("Invalid payload. Ignoring: %s\n", payload);
     return;
   }
-  updateSwitchState(state);
+  if (!isDigit(payload[0])) {
+      Serial.printf("Invalid payload format. Ignoring: %s\n", payload);
+      return;
+  }
+  switch (payload[0]) {
+    case '0':
+      updateSwitchState(0);
+    break;
+    case '1':
+      updateSwitchState(1);
+    break;
+    default:
+      Serial.printf("Invalid state [%s]\n", payload[0]);
+    return;
+  } 
   publishSwitchState();
 }
 
@@ -36,20 +58,7 @@ void publishSwitchState () {
     }
 }
 
-uint8_t translateMessage (char* topic, unsigned char* payload, unsigned int length) {
-  Serial.printf("Message arrived. Topic: [%s]. Length: [%d]\n", topic, length);
-  if (length != 1 || !payload) {
-    Serial.printf("Invalid payload. Ignoring: %s\n", payload);
-    return STATE_INVALID;
-  }
-  if (!isDigit(payload[0])) {
-      Serial.printf("Invalid payload format. Ignoring: %s\n", payload);
-      return STATE_INVALID;
-  }
-  return payload[0] == '1' ? STATE_ON : payload[0] == '0' ? STATE_OFF : STATE_INVALID;
-}
-
-void updateSwitchState (unsigned int state) {
+void updateSwitchState (uint8_t state) {
   if (currSwitchState == state) {
     Serial.println("No state change detected. Ignoring.");
     return;
@@ -75,6 +84,7 @@ void connectBroker() {
     if (mqttClient.connect(name)) {
       Serial.println("connected");
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
+      mqttClient.subscribe("ESP/state/req");
     } else {
       Serial.print("failed, rc=");
       Serial.println(mqttClient.state());

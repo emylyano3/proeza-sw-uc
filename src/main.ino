@@ -11,10 +11,10 @@
 /* Config topics */
 char mqttServer[16]   = "192.168.0.105";
 char mqttPort[6]      = "1883";
-char domain[21]       = "MyHome";
-char name[21]         = "switch01";
-char location[21]     = "roomFront";
-char type[21]         = "Switch";
+char domain[21]       = "Brickland";
+char name[21]         = "main";
+char location[21]     = "frontRoom";
+char type[21]         = "Light";
 
 const uint8_t GPIO_2  = 2;
 
@@ -27,11 +27,11 @@ PubSubClient mqttClient(espClient);
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\nSetup started");
+  Serial.println(F("\nSetup started"));
   //clean FS, for testing
   // SPIFFS.format();
   //read configuration from FS json
-  Serial.println("mounting FS...");
+  Serial.println(F("mounting FS..."));
   loadConfig();
 
   // The extra parameters to be configured (can be either global or just in the setup)
@@ -75,7 +75,7 @@ void setup() {
   //access point with the specified name here  "AutoConnectAP" and goes into a 
   //blocking loop awaiting configuration
   if (!wifiManager.autoConnect("ESP Module AP", "12345678")) {
-    Serial.println("failed to connect and hit timeout");
+    Serial.println(F("failed to connect and hit timeout"));
     delay(3000);
     //reset and try again, or maybe put it to deep sleep
     ESP.reset();
@@ -83,7 +83,7 @@ void setup() {
   }
 
   //if you get here you have connected to the WiFi
-  Serial.println("Connected to wifi network");
+  Serial.println(F("Connected to wifi network"));
 
   //read updated parameters
   strcpy(mqttServer, mqttServerParam.getValue());
@@ -94,7 +94,7 @@ void setup() {
   strcpy(type, typeParam.getValue());
 
   saveConfig();
-  Serial.println("local ip");
+  Serial.println(F("local ip"));
   Serial.println(WiFi.localIP());
   Serial.printf("Configuring MQTT broker. Server: %s. Port: %s\n", mqttServer, mqttPort);
   String port = String(mqttPort);
@@ -109,13 +109,13 @@ void loop() {
 
 void loadConfig() {
   if (SPIFFS.begin()) {
-    Serial.println("mounted file system");
+    Serial.println(F("mounted file system"));
     if (SPIFFS.exists("/config.json")) {
       //file exists, reading and loading
-      Serial.println("reading config file");
+      Serial.println(F("reading config file"));
       File configFile = SPIFFS.open("/config.json", "r");
       if (configFile) {
-        Serial.println("opened config file");
+        Serial.println(F("opened config file"));
         size_t size = configFile.size();
         // Allocate a buffer to store contents of the file.
         std::unique_ptr<char[]> buf(new char[size]);
@@ -124,7 +124,7 @@ void loadConfig() {
         JsonObject& json = jsonBuffer.parseObject(buf.get());
         json.printTo(Serial);
         if (json.success()) {
-          Serial.println("\nparsed json");
+          Serial.println(F("\nparsed json"));
           strcpy(mqttServer, json["mqtt_server"]);
           strcpy(mqttPort, json["mqtt_port"]);
           strcpy(domain, json["domain"]);
@@ -132,21 +132,21 @@ void loadConfig() {
           strcpy(location, json["location"]);
           strcpy(type, json["type"]);
         } else {
-          Serial.println("failed to load json config");
+          Serial.println(F("failed to load json config"));
         }
       }
     } else {
-      Serial.println("no config file found");
+      Serial.println(F("no config file found"));
     }
   } else {
-    Serial.println("failed to mount FS");
+    Serial.println(F("failed to mount FS"));
   }
 }
 
 /** Save the custom parameters to FS */
 void saveConfig() {
   if (shouldSaveConfig) {
-    Serial.println("saving config");
+    Serial.println(F("saving config"));
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
     json["mqtt_server"] = mqttServer;
@@ -157,7 +157,7 @@ void saveConfig() {
     json["type"] = type;
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
-      Serial.println("failed to open config file for writing");
+      Serial.println(F("failed to open config file for writing"));
     }
     json.printTo(Serial);
     json.printTo(configFile);
