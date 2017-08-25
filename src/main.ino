@@ -33,7 +33,6 @@ void setup() {
   //read configuration from FS json
   Serial.println("mounting FS...");
   loadConfig();
-  //end read
 
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
@@ -91,29 +90,10 @@ void setup() {
   strcpy(mqttPort, mqttPortParam.getValue());
   strcpy(domain, domainParam.getValue());
   strcpy(name, nameParam.getValue());
-  strcpy(location, locationParam.getValue());
+  strcpy(location, locationParam.getValue()); 
   strcpy(type, typeParam.getValue());
 
-  //save the custom parameters to FS
-  if (shouldSaveConfig) {
-    Serial.println("saving config");
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["mqtt_server"] = mqttServer;
-    json["mqtt_port"] = mqttPort;
-    json["domain"] = domain;
-    json["name"] = name;
-    json["location"] = location;
-    json["type"] = type;
-    File configFile = SPIFFS.open("/config.json", "w");
-    if (!configFile) {
-      Serial.println("failed to open config file for writing");
-    }
-    json.printTo(Serial);
-    json.printTo(configFile);
-    configFile.close();
-    //end save
-  }
+  saveConfig();
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
   Serial.printf("Configuring MQTT broker. Server: %s. Port: %s\n", mqttServer, mqttPort);
@@ -163,8 +143,29 @@ void loadConfig() {
   }
 }
 
+/** Save the custom parameters to FS */
+void saveConfig() {
+  if (shouldSaveConfig) {
+    Serial.println("saving config");
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject& json = jsonBuffer.createObject();
+    json["mqtt_server"] = mqttServer;
+    json["mqtt_port"] = mqttPort;
+    json["domain"] = domain;
+    json["name"] = name;
+    json["location"] = location;
+    json["type"] = type;
+    File configFile = SPIFFS.open("/config.json", "w");
+    if (!configFile) {
+      Serial.println("failed to open config file for writing");
+    }
+    json.printTo(Serial);
+    json.printTo(configFile);
+    configFile.close();
+  }
+}
+
 /** callback notifying the need to save config */
 void saveConfigCallback () {
-  Serial.println("Should save config");
   shouldSaveConfig = true;
 }

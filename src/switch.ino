@@ -27,10 +27,10 @@ void callback(char* topic, unsigned char* payload, unsigned int length) {
 void publishSwitchState () {
     switch (currSwitchState) {
       case STATE_OFF:
-        mqttClient.publish(getStateTopic(), "0");
+        mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), "0");
         return;
       case STATE_ON:
-        mqttClient.publish(getStateTopic(), "1");
+        mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), "1");
         return;
       default: return;
     }
@@ -57,12 +57,10 @@ void updateSwitchState (unsigned int state) {
   currSwitchState = state;
   switch (state) {
     case STATE_OFF:
-      // Turn the LED OFF (Note that HIGH is the voltage level but actually the LED is OFF
-      // This is because it is acive low on the ESP-01)
-      digitalWrite(GPIO_2, HIGH);
+      digitalWrite(GPIO_2, LOW);
       break;
     case STATE_ON:
-      digitalWrite(GPIO_2, LOW);
+      digitalWrite(GPIO_2, HIGH);
       break;
     default:
       break;
@@ -76,7 +74,7 @@ void connectBroker() {
     Serial.printf("Connecting MQTT broker as %s...", name);
     if (mqttClient.connect(name)) {
       Serial.println("connected");
-      mqttClient.subscribe(getCommandTopic());
+      mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
     } else {
       Serial.print("failed, rc=");
       Serial.println(mqttClient.state());
@@ -84,10 +82,14 @@ void connectBroker() {
   }
 }
 
-const char* getCommandTopic() {
-  return "light/room01/cmd";
-} 
-
-const char* getStateTopic() {
-  return "light/room01/state";
+uint8_t getTopicLength(const char* wich) {
+  return strlen(type) + strlen(location) + strlen(name) + strlen(wich) + 4;
 }
+
+char* getTopic(char* topic, const char* wich) {
+  String buff = String(type) + String(F("/")) + String(location) + String(F("/")) + String(name) + String(F("/")) + String(wich);
+  buff.toCharArray(topic, buff.length() + 1);
+  Serial.print("Topic: ");
+  Serial.println(topic);
+  return topic;
+} 
