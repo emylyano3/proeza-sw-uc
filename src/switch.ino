@@ -65,8 +65,9 @@ void updateSwitchState (char state) {
 void connectBroker() {
   if (nextBrokerConnAtte <= millis()) {
     nextBrokerConnAtte = millis() + 5000;
-    Serial.printf("Connecting MQTT broker as %s...", name);
-    if (mqttClient.connect(name)) {
+    String mqttClientName = String(location) + "_" + String(name);
+    Serial.printf("Connecting MQTT broker as %s...", mqttClientName.c_str());
+    if (mqttClient.connect(mqttClientName.c_str())) {
       Serial.println(F("connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
       mqttClient.subscribe("ESP/state/req");

@@ -8,13 +8,15 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
+#define PARAM_LENGTH 15
+
 /* Config topics */
-char mqttServer[16]   = "192.168.0.105";
-char mqttPort[6]      = "1883";
-char domain[21]       = "Brickland";
-char name[21]         = "main";
-char location[21]     = "frontRoom";
-char type[21]         = "Light";
+char mqttServer[16]         = "192.168.0.105";
+char mqttPort[6]            = "1883";
+// char domain[PARAM_LENGTH]   = "Brickland";
+char location[PARAM_LENGTH] = "frontRoom";
+char name[PARAM_LENGTH]     = "main";
+char type[PARAM_LENGTH]     = "light";
 
 const uint8_t GPIO_2  = 2;
 
@@ -39,7 +41,7 @@ void setup() {
   // id/name placeholder/prompt default length
   WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
   WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
-  WiFiManagerParameter domainParam("domain", "Module domain", domain, 21);
+  // WiFiManagerParameter domainParam("domain", "Module domain", domain, 21);
   WiFiManagerParameter nameParam("name", "Module name", name, 21);
   WiFiManagerParameter locationParam("location", "Module location", location, 21);
   WiFiManagerParameter typeParam("type", "Module type", type, 21);
@@ -49,14 +51,14 @@ void setup() {
 
   //set config save notify callback
   wifiManager.setSaveConfigCallback(saveConfigCallback);
-  wifiManager.setStationName(name);
+  wifiManager.setStationNameCallback(stationNameCallback);
   //set static ip
   //wifiManager.setSTAStaticIPConfig(IPAddress(10,0,1,99), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
   
   //add all your parameters here
   wifiManager.addParameter(&mqttServerParam);
   wifiManager.addParameter(&mqttPortParam);
-  wifiManager.addParameter(&domainParam);
+  // wifiManager.addParameter(&domainParam);
   wifiManager.addParameter(&nameParam);
   wifiManager.addParameter(&locationParam);
   wifiManager.addParameter(&typeParam);
@@ -74,7 +76,7 @@ void setup() {
   //fetches ssid and pass and tries to connect, if it does not connect it starts an
   //access point with the specified name here  "AutoConnectAP" and goes into a 
   //blocking loop awaiting configuration
-  if (!wifiManager.autoConnect("ESP Module AP", "12345678")) {
+  if (!wifiManager.autoConnect(("ESP_" + String(ESP.getChipId())).c_str(), "12345678")) {
     Serial.println(F("failed to connect and hit timeout"));
     delay(3000);
     //reset and try again, or maybe put it to deep sleep
@@ -88,7 +90,7 @@ void setup() {
   //read updated parameters
   strcpy(mqttServer, mqttServerParam.getValue());
   strcpy(mqttPort, mqttPortParam.getValue());
-  strcpy(domain, domainParam.getValue());
+  // strcpy(domain, domainParam.getValue());
   strcpy(name, nameParam.getValue());
   strcpy(location, locationParam.getValue()); 
   strcpy(type, typeParam.getValue());
@@ -127,7 +129,7 @@ void loadConfig() {
           Serial.println(F("\nparsed json"));
           strcpy(mqttServer, json["mqtt_server"]);
           strcpy(mqttPort, json["mqtt_port"]);
-          strcpy(domain, json["domain"]);
+          // strcpy(domain, json["domain"]);
           strcpy(name, json["name"]);
           strcpy(location, json["location"]);
           strcpy(type, json["type"]);
@@ -151,7 +153,7 @@ void saveConfig() {
     JsonObject& json = jsonBuffer.createObject();
     json["mqtt_server"] = mqttServer;
     json["mqtt_port"] = mqttPort;
-    json["domain"] = domain;
+    // json["domain"] = domain;
     json["name"] = name;
     json["location"] = location;
     json["type"] = type;
@@ -168,4 +170,10 @@ void saveConfig() {
 /** callback notifying the need to save config */
 void saveConfigCallback () {
   shouldSaveConfig = true;
+}
+
+char* stationNameCallback(char* sn) {
+  String buff = String(location) + String(F("_")) + String(type) + String(F("_")) + String(name);
+  buff.toCharArray(sn, buff.length() + 1);
+  return sn;
 }
