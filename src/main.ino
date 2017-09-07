@@ -28,6 +28,12 @@ bool shouldSaveConfig       = false;
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
+WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
+WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
+WiFiManagerParameter nameParam("name", "Module name", name, 21);
+WiFiManagerParameter locationParam("location", "Module location", location, 21);
+WiFiManagerParameter typeParam("type", "Module type", type, 21);
+
 template <class T> void log (T text) {
   if (DEBUG) {
     Serial.print("*SW: ");
@@ -51,11 +57,6 @@ void setup() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
-  WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
-  WiFiManagerParameter nameParam("name", "Module name", name, 21);
-  WiFiManagerParameter locationParam("location", "Module location", location, 21);
-  WiFiManagerParameter typeParam("type", "Module type", type, 21);
 
   //Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
@@ -74,7 +75,7 @@ void setup() {
   wifiManager.addParameter(&typeParam);
 
   //reset settings - for testing
-  // wifiManager.resetSettings();
+  wifiManager.resetSettings();
 
   //set minimum quality of signal so it ignores AP's under that quality
   //defaults to 8%
@@ -105,9 +106,11 @@ void setup() {
   strcpy(type, typeParam.getValue());
 
   saveConfig();
-  log(F("Local IP:"), WiFi.localIP());
+  log(F("Local IP"), WiFi.localIP());
   String port = String(mqttPort);
-  log("Configuring MQTT broker. Server: " + String(mqttServer) + " Port: " + port);
+  log(F("Configuring MQTT broker"));
+  log(F("Server"), mqttServer);
+  log(F("Port"), port);
   mqttClient.setServer(mqttServer, (uint16_t) port.toInt());
   mqttClient.setCallback(callback);
   pinMode(GPIO_2, OUTPUT);
@@ -119,7 +122,7 @@ void loop() {
 
 void loadConfig() {
   //clean FS, for testing
-  // SPIFFS.format();
+  SPIFFS.format();
   //read configuration from FS json
   log(F("Mounting FS..."));
   if (SPIFFS.begin()) {
@@ -183,7 +186,7 @@ void saveConfigCallback () {
 }
 
 char* stationNameCallback(char* sn) {
-  String buff = String(location) + String(F("_")) + String(type) + String(F("_")) + String(name);
+  String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
   buff.toCharArray(sn, buff.length() + 1);
   return sn;
 }

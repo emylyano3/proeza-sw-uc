@@ -15,8 +15,8 @@ void moduleRun () {
 
 void callback(char* topic, unsigned char* payload, unsigned int length) {
   log(F("Message arrived"));
-  log(F("Topic: "), topic);
-  log(F("Length: "), length);
+  log(F("Topic"), topic);
+  log(F("Length"), length);
   if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
     processSwitchCommand(payload, length);
   } else {
@@ -39,7 +39,7 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
       updateSwitchState(payload[0]);
     break;
     default:
-      log(F("Invalid state: "), payload[0]);
+      log(F("Invalid state"), payload[0]);
     return;
   } 
   mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), new char[2]{payload[0], '\0'});
@@ -61,14 +61,14 @@ void updateSwitchState (char state) {
     default:
       break;
   }
-  log(F("State changed to: "), currSwitchState);
+  log(F("State changed to"), currSwitchState);
 }
 
 void connectBroker() {
   if (nextBrokerConnAtte <= millis()) {
     nextBrokerConnAtte = millis() + 5000;
     String mqttClientName = String(location) + "_" + String(name);
-    log(F("Connecting MQTT broker as: "), mqttClientName.c_str());
+    log(F("Connecting MQTT broker as"), mqttClientName.c_str());
     if (mqttClient.connect(mqttClientName.c_str())) {
       log(F("Connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
@@ -86,6 +86,6 @@ uint8_t getTopicLength(const char* wich) {
 char* getTopic(char* topic, const char* wich) {
   String buff = String(type) + String(F("/")) + String(location) + String(F("/")) + String(name) + String(F("/")) + String(wich);
   buff.toCharArray(topic, buff.length() + 1);
-  log(F("Topic: "), topic);
+  log(F("Topic"), topic);
   return topic;
 } 
