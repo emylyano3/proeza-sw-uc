@@ -10,6 +10,7 @@
 
 #define PARAM_LENGTH 15
 #define DEBUG true
+// #define TESTING
 
 const char* CONFIG_FILE     = "/config.json";
 
@@ -73,10 +74,9 @@ void setup() {
   wifiManager.addParameter(&nameParam);
   wifiManager.addParameter(&locationParam);
   wifiManager.addParameter(&typeParam);
-
-  //reset settings - for testing
+  #ifdef TESTING
   wifiManager.resetSettings();
-
+  #endif
   //set minimum quality of signal so it ignores AP's under that quality
   //defaults to 8%
   wifiManager.setMinimumSignalQuality(20);
@@ -121,8 +121,9 @@ void loop() {
 }
 
 void loadConfig() {
-  //clean FS, for testing
+  #ifdef TESTING
   SPIFFS.format();
+  #endif
   //read configuration from FS json
   log(F("Mounting FS..."));
   if (SPIFFS.begin()) {
