@@ -14,21 +14,23 @@ void moduleRun () {
 }
 
 void callback(char* topic, unsigned char* payload, unsigned int length) {
-  Serial.printf("Message arrived. Topic: [%s]. Length: [%d]\n", topic, length);
+  log(F("Message arrived"));
+  log(F("Topic: "), topic);
+  log(F("Length: "), length);
   if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
     processSwitchCommand(payload, length);
   } else {
-    Serial.println(F("Unknown topic"));
+    log(F("Unknown topic"));
   }
 }
 
 void processSwitchCommand(unsigned char* payload, unsigned int length) {
   if (length != 1 || !payload) {
-    Serial.printf("Invalid payload. Ignoring: %s\n", payload);
+    log(F("Invalid payload. Ignoring."));
     return;
   }
   if (!isDigit(payload[0])) {
-      Serial.printf("Invalid payload format. Ignoring: %s\n", payload);
+      log(F("Invalid payload format. Ignoring."));
       return;
   }
   switch (payload[0]) {
@@ -37,7 +39,7 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
       updateSwitchState(payload[0]);
     break;
     default:
-      Serial.printf("Invalid state [%s]\n", payload[0]);
+      log(F("Invalid state: "), payload[0]);
     return;
   } 
   mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), new char[2]{payload[0], '\0'});
@@ -45,7 +47,7 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
 
 void updateSwitchState (char state) {
   if (currSwitchState == state) {
-    Serial.println(F("No state change detected. Ignoring."));
+    log(F("No state change detected. Ignoring."));
     return;
   }
   currSwitchState = state;
@@ -59,21 +61,20 @@ void updateSwitchState (char state) {
     default:
       break;
   }
-  Serial.printf("State changed to: %d\n", currSwitchState);
+  log(F("State changed to: "), currSwitchState);
 }
 
 void connectBroker() {
   if (nextBrokerConnAtte <= millis()) {
     nextBrokerConnAtte = millis() + 5000;
     String mqttClientName = String(location) + "_" + String(name);
-    Serial.printf("Connecting MQTT broker as %s...", mqttClientName.c_str());
+    log(F("Connecting MQTT broker as: "), mqttClientName.c_str());
     if (mqttClient.connect(mqttClientName.c_str())) {
-      Serial.println(F("connected"));
+      log(F("Connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
       mqttClient.subscribe("ESP/state/req");
     } else {
-      Serial.print(F("failed, rc="));
-      Serial.println(mqttClient.state());
+      log(F("Failed. RC:"), mqttClient.state());
     }
   }
 }
@@ -85,7 +86,6 @@ uint8_t getTopicLength(const char* wich) {
 char* getTopic(char* topic, const char* wich) {
   String buff = String(type) + String(F("/")) + String(location) + String(F("/")) + String(name) + String(F("/")) + String(wich);
   buff.toCharArray(topic, buff.length() + 1);
-  Serial.print(F("Topic: "));
-  Serial.println(topic);
+  log(F("Topic: "), topic);
   return topic;
 } 
