@@ -19,9 +19,25 @@ void callback(char* topic, unsigned char* payload, unsigned int length) {
   log(F("Length"), length);
   if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
     processSwitchCommand(payload, length);
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("reset")], "reset")))) {
+    resetModule();
   } else {
     log(F("Unknown topic"));
   }
+}
+
+void resetModule () {
+  log(F("Reseting module configuration"));
+  WiFiManager wifiManager;
+  // resetSettings() invoca un WiFi.disconnect() que invalida el ssid/pass guardado en la flash
+  wifiManager.resetSettings();
+  delay(200);
+  // Es mejor no eliminar la configuracion del modulo para que en el siguiente
+  // boot la configuracion persistida se muestre al usuario en el portal de configuracion
+  // SPIFFS.format();
+  // delay(200);
+  ESP.restart();
+  delay(2000);
 }
 
 void processSwitchCommand(unsigned char* payload, unsigned int length) {
@@ -72,6 +88,7 @@ void connectBroker() {
     if (mqttClient.connect(mqttClientName.c_str())) {
       log(F("Connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("reset")], "reset"));
       mqttClient.subscribe("ESP/state/req");
     } else {
       log(F("Failed. RC:"), mqttClient.state());

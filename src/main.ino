@@ -79,7 +79,7 @@ void setup() {
   #endif
   //set minimum quality of signal so it ignores AP's under that quality
   //defaults to 8%
-  wifiManager.setMinimumSignalQuality(20);
+  wifiManager.setMinimumSignalQuality(30);
   
   //sets timeout until configuration portal gets turned off useful to make it all
   //retry or go to sleep in seconds wifiManager.setTimeout(120);
