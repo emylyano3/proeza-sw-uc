@@ -29,8 +29,6 @@ bool shouldSaveConfig       = false;
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
-WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
 WiFiManagerParameter nameParam("name", "Module name", name, 21);
 WiFiManagerParameter locationParam("location", "Module location", location, 21);
 WiFiManagerParameter typeParam("type", "Module type", type, 21);
@@ -58,7 +56,9 @@ void setup() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-
+  WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
+  WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
+  
   //Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
 
@@ -185,7 +185,7 @@ void saveConfig() {
 void saveConfigCallback () {
   shouldSaveConfig = true;
 }
-
+  
 char* stationNameCallback(char* sn) {
   String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
   buff.toCharArray(sn, buff.length() + 1);
