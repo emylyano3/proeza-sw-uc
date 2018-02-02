@@ -1,16 +1,19 @@
 #include <FS.h>                   //this needs to be first, or it all crashes and burns...
 
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-#include <DNSServer.h>
+// #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+
+#include <WiFiClient.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266HTTPUpdateServer.h>
 
 #include <PubSubClient.h>
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
 #define PARAM_LENGTH 15
 #define DEBUG true
-// #define TESTING
 
 const char* CONFIG_FILE     = "/config.json";
 
@@ -23,15 +26,23 @@ char type[PARAM_LENGTH]     = "light";
 
 const uint8_t GPIO_2        = 2;
 
-//flag for saving data
-bool shouldSaveConfig       = false;
-
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
 WiFiManagerParameter nameParam("name", "Module name", name, 21);
 WiFiManagerParameter locationParam("location", "Module location", location, 21);
 WiFiManagerParameter typeParam("type", "Module type", type, 21);
+
+ESP8266WebServer httpServer(80);
+ESP8266HTTPUpdateServer httpUpdater;
+
+/* Possible switch states */
+const char STATE_OFF     = '0';
+const char STATE_ON      = '1';
+
+char currSwitchState = STATE_OFF;
+
+long nextBrokerConnAtte = 0;
 
 template <class T> void log (T text) {
   if (DEBUG) {
@@ -74,9 +85,7 @@ void setup() {
   wifiManager.addParameter(&nameParam);
   wifiManager.addParameter(&locationParam);
   wifiManager.addParameter(&typeParam);
-  #ifdef TESTING
-  wifiManager.resetSettings();
-  #endif
+  
   //set minimum quality of signal so it ignores AP's under that quality
   //defaults to 8%
   wifiManager.setMinimumSignalQuality(30);
@@ -105,7 +114,6 @@ void setup() {
   strcpy(location, locationParam.getValue()); 
   strcpy(type, typeParam.getValue());
 
-  saveConfig();
   log(F("Local IP"), WiFi.localIP());
   String port = String(mqttPort);
   log(F("Configuring MQTT broker"));
@@ -114,16 +122,29 @@ void setup() {
   mqttClient.setServer(mqttServer, (uint16_t) port.toInt());
   mqttClient.setCallback(callback);
   pinMode(GPIO_2, OUTPUT);
+
+  // OTA Stuff
+  WiFi.mode(WIFI_AP_STA);
+  //WiFi.begin(ssid, password);
+
+  // while(WiFi.waitForConnectResult() != WL_CONNECTED){
+  //   WiFi.begin(ssid, password);
+  //   Serial.println("WiFi failed, retrying.");
+  // }
+  char* host = stationNameCallback(new char[50]);
+  MDNS.begin(host);
+
+  httpUpdater.setup(&httpServer);
+  httpServer.begin();
+
+  MDNS.addService("http", "tcp", 80);
+  Serial.print("HTTPUpdateServer ready! Open http://");
+  Serial.print(WiFi.localIP().toString());
+  Serial.println("/update in your browser");
+
 }
 
-void loop() {
-  moduleRun();
-}
-
-void loadConfig() {
-  #ifdef TESTING
-  SPIFFS.format();
-  #endif
+void loadConfig() { 
   //read configuration from FS json
   log(F("Mounting FS..."));
   if (SPIFFS.begin()) {
@@ -160,30 +181,23 @@ void loadConfig() {
   }
 }
 
-/** Save the custom parameters to FS */
-void saveConfig() {
-  if (shouldSaveConfig) {
-    log(F("Saving config"));
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["mqtt_server"] = mqttServer;
-    json["mqtt_port"] = mqttPort;
-    json["name"] = name;
-    json["location"] = location;
-    json["type"] = type;
-    File configFile = SPIFFS.open(CONFIG_FILE, "w");
-    if (!configFile) {
-      log(F("Failed to open config file for writing"));
-    }
-    json.printTo(Serial);
-    json.printTo(configFile);
-    configFile.close();
-  }
-}
-
 /** callback notifying the need to save config */
 void saveConfigCallback () {
-  shouldSaveConfig = true;
+  log(F("Saving config"));
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+  json["mqtt_server"] = mqttServer;
+  json["mqtt_port"] = mqttPort;
+  json["name"] = name;
+  json["location"] = location;
+  json["type"] = type;
+  File configFile = SPIFFS.open(CONFIG_FILE, "w");
+  if (!configFile) {
+    log(F("Failed to open config file for writing"));
+  }
+  json.printTo(Serial);
+  json.printTo(configFile);
+  configFile.close();
 }
   
 char* stationNameCallback(char* sn) {
@@ -191,3 +205,109 @@ char* stationNameCallback(char* sn) {
   buff.toCharArray(sn, buff.length() + 1);
   return sn;
 }
+
+void loop() {
+  moduleRun();
+}
+
+void moduleRun () {
+  httpServer.handleClient();
+  if (!mqttClient.connected()) {
+    connectBroker();
+  }
+  mqttClient.loop();
+}
+
+void callback(char* topic, unsigned char* payload, unsigned int length) {
+  log(F("Message arrived"));
+  log(F("Topic"), topic);
+  log(F("Length"), length);
+  if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
+    processSwitchCommand(payload, length);
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("reset")], "reset")))) {
+    resetModule();
+  } else {
+    log(F("Unknown topic"));
+  }
+}
+
+void resetModule () {
+  log(F("Reseting module configuration"));
+  WiFiManager wifiManager;
+  // resetSettings() invoca un WiFi.disconnect() que invalida el ssid/pass guardado en la flash
+  wifiManager.resetSettings();
+  delay(200);
+  // Es mejor no eliminar la configuracion del modulo para que en el siguiente
+  // boot la configuracion persistida se muestre al usuario en el portal de configuracion
+  // SPIFFS.format();
+  // delay(200);
+  ESP.restart();
+  delay(2000);
+}
+
+void processSwitchCommand(unsigned char* payload, unsigned int length) {
+  if (length != 1 || !payload) {
+    log(F("Invalid payload. Ignoring."));
+    return;
+  }
+  if (!isDigit(payload[0])) {
+      log(F("Invalid payload format. Ignoring."));
+      return;
+  }
+  switch (payload[0]) {
+    case '0':
+    case '1':
+      updateSwitchState(payload[0]);
+    break;
+    default:
+      log(F("Invalid state"), payload[0]);
+    return;
+  } 
+  mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), new char[2]{payload[0], '\0'});
+}
+
+void updateSwitchState (char state) {
+  if (currSwitchState == state) {
+    log(F("No state change detected. Ignoring."));
+    return;
+  }
+  currSwitchState = state;
+  switch (state) {
+    case STATE_OFF:
+      digitalWrite(GPIO_2, HIGH);
+      break;
+    case STATE_ON:
+      digitalWrite(GPIO_2, LOW);
+      break;
+    default:
+      break;
+  }
+  log(F("State changed to"), currSwitchState);
+}
+
+void connectBroker() {
+  if (nextBrokerConnAtte <= millis()) {
+    nextBrokerConnAtte = millis() + 5000;
+    String mqttClientName = String(location) + "_" + String(name);
+    log(F("Connecting MQTT broker as"), mqttClientName.c_str());
+    if (mqttClient.connect(mqttClientName.c_str())) {
+      log(F("Connected"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("reset")], "reset"));
+      mqttClient.subscribe("ESP/state/req");
+    } else {
+      log(F("Failed. RC:"), mqttClient.state());
+    }
+  }
+}
+
+uint8_t getTopicLength(const char* wich) {
+  return strlen(type) + strlen(location) + strlen(name) + strlen(wich) + 4;
+}
+
+char* getTopic(char* topic, const char* wich) {
+  String buff = String(type) + String(F("/")) + String(location) + String(F("/")) + String(name) + String(F("/")) + String(wich);
+  buff.toCharArray(topic, buff.length() + 1);
+  log(F("Topic"), topic);
+  return topic;
+} 
