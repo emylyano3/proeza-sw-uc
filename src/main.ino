@@ -32,6 +32,8 @@ PubSubClient mqttClient(espClient);
 WiFiManagerParameter nameParam("name", "Module name", name, 21);
 WiFiManagerParameter locationParam("location", "Module location", location, 21);
 WiFiManagerParameter typeParam("type", "Module type", type, 21);
+WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
+WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
 
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
@@ -67,9 +69,7 @@ void setup() {
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
   // id/name placeholder/prompt default length
-  WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
-  WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
-  
+    
   //Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
 
@@ -120,7 +120,7 @@ void setup() {
   log(F("Server"), mqttServer);
   log(F("Port"), port);
   mqttClient.setServer(mqttServer, (uint16_t) port.toInt());
-  mqttClient.setCallback(callback);
+  mqttClient.setCallback(mqttCallback);
   pinMode(GPIO_2, OUTPUT);
 
   // OTA Stuff
@@ -156,22 +156,28 @@ void loadConfig() {
       if (configFile) {
         log(F("Opened config file"));
         size_t size = configFile.size();
-        // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
-        configFile.readBytes(buf.get(), size);
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject& json = jsonBuffer.parseObject(buf.get());
-        json.printTo(Serial);
-        if (json.success()) {
-          log(F("\nParsed json"));
-          strcpy(mqttServer, json["mqtt_server"]);
-          strcpy(mqttPort, json["mqtt_port"]);
-          strcpy(name, json["name"]);
-          strcpy(location, json["location"]);
-          strcpy(type, json["type"]);
+        if (size > 0) {
+          // Allocate a buffer to store contents of the file.
+          std::unique_ptr<char[]> buf(new char[size]);
+          configFile.readBytes(buf.get(), size);
+          DynamicJsonBuffer jsonBuffer;
+          JsonObject& json = jsonBuffer.parseObject(buf.get());
+          json.printTo(Serial);
+          if (json.success()) {
+            log(F("\nParsed json"));
+            strcpy(mqttServer, json["mqtt_server"]);
+            strcpy(mqttPort, json["mqtt_port"]);
+            strcpy(name, json["name"]);
+            strcpy(location, json["location"]);
+            strcpy(type, json["type"]);
+          } else {
+            log(F("Failed to load json config"));
+          }
         } else {
-          log(F("Failed to load json config"));
+          log(F("Config file empty"));
         }
+      } else {
+        log(F("No config file found"));
       }
     } else {
       log(F("No config file found"));
@@ -186,11 +192,11 @@ void saveConfigCallback () {
   log(F("Saving config"));
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
-  json["mqtt_server"] = mqttServer;
-  json["mqtt_port"] = mqttPort;
-  json["name"] = name;
-  json["location"] = location;
-  json["type"] = type;
+  json["mqtt_server"] = mqttServerParam.getValue();
+  json["mqtt_port"] = mqttPortParam.getValue();
+  json["name"] = nameParam.getValue();
+  json["location"] = locationParam.getValue();
+  json["type"] = typeParam.getValue();
   File configFile = SPIFFS.open(CONFIG_FILE, "w");
   if (!configFile) {
     log(F("Failed to open config file for writing"));
@@ -218,7 +224,7 @@ void moduleRun () {
   mqttClient.loop();
 }
 
-void callback(char* topic, unsigned char* payload, unsigned int length) {
+void mqttCallback(char* topic, unsigned char* payload, unsigned int length) {
   log(F("Message arrived"));
   log(F("Topic"), topic);
   log(F("Length"), length);
