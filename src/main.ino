@@ -68,15 +68,15 @@ void setup() {
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   WiFiManagerParameter locationParam("location", "Module location", location, PARAM_LENGTH);
-  WiFiManagerParameter nameParam("name", "Module name", name, PARAM_LENGTH);
   WiFiManagerParameter typeParam("type", "Module type", type, PARAM_LENGTH);
+  WiFiManagerParameter nameParam("name", "Module name", name, PARAM_LENGTH);
   WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
   WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
   wifiManager.addParameter(&mqttServerParam);
   wifiManager.addParameter(&mqttPortParam);
-  wifiManager.addParameter(&nameParam);
   wifiManager.addParameter(&locationParam);
   wifiManager.addParameter(&typeParam);
+  wifiManager.addParameter(&nameParam);
   wifiManager.setMinimumSignalQuality(30);
   
   if (!wifiManager.autoConnect(("ESP_" + String(ESP.getChipId())).c_str(), "12345678")) {
@@ -87,7 +87,6 @@ void setup() {
     delay(5000);
   }
   log(F("Connected to wifi network"));
-
   if (shouldSaveConfig) {
     shouldSaveConfig = false;
     DynamicJsonBuffer jsonBuffer;
@@ -105,7 +104,6 @@ void setup() {
     } else {
       log(F("Failed to open config file for writing"));
     }
-    
     //read updated parameters
     strcpy(mqttServer, mqttServerParam.getValue());
     strcpy(mqttPort, mqttPortParam.getValue());
@@ -113,7 +111,6 @@ void setup() {
     strcpy(location, locationParam.getValue()); 
     strcpy(type, typeParam.getValue());
   }
-
   log(F("Local IP"), WiFi.localIP());
   log(F("Configuring MQTT broker"));
   String port = String(mqttPort);
@@ -122,40 +119,34 @@ void setup() {
   mqttClient.setServer(mqttServer, (uint16_t) port.toInt());
   mqttClient.setCallback(mqttCallback);
   pinMode(GPIO_2, OUTPUT);
+  
+  // Building station name and topics base
+  String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
+  buff.toCharArray(stationName, buff.length() + 1);
+  buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
+  buff.toCharArray(topicBase, buff.length() + 1);
+  log("Station name", stationName);
+  log("Topics Base", topicBase);
 
   // OTA Update Stuff
   WiFi.mode(WIFI_AP_STA);
-  String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
-  buff.toCharArray(stationName, buff.length() + 1);
   MDNS.begin(stationName);
-
-  buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
-  buff.toCharArray(topicBase, buff.length() + 1);
-
-  log("Station name", stationName);
-  log("Topic Base", topicBase);
-  
   httpUpdater.setup(&httpServer);
   httpServer.begin();
-
   MDNS.addService("http", "tcp", 80);
   Serial.print("HTTPUpdateServer ready! Open http://");
   Serial.print(WiFi.localIP().toString());
   Serial.println("/update in your browser");
-
 }
 
 void loadConfig() { 
   //read configuration from FS json
-  log(F("Mounting FS..."));
   if (SPIFFS.begin()) {
     log(F("Mounted file system"));
     if (SPIFFS.exists(CONFIG_FILE)) {
       //file exists, reading and loading
-      log(F("Reading config file"));
       File configFile = SPIFFS.open(CONFIG_FILE, "r");
       if (configFile) {
-        log(F("Opened config file"));
         size_t size = configFile.size();
         if (size > 0) {
           // Allocate a buffer to store contents of the file.
@@ -202,9 +193,7 @@ void loop() {
 }
 
 void mqttCallback(char* topic, unsigned char* payload, unsigned int length) {
-  log(F("Message arrived"));
-  log(F("Topic"), topic);
-  log(F("Length"), length);
+  log(F("mqtt message"), topic);
   if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
     processSwitchCommand(payload, length);
   } else if (String(topic).equals(String(getTopic(new char[getTopicLength("reset")], "reset")))) {
@@ -215,7 +204,7 @@ void mqttCallback(char* topic, unsigned char* payload, unsigned int length) {
 }
 
 void resetModule () {
-  log(F("Reseting module configuration"));
+  // log(F("Reseting module configuration"));
   WiFiManager wifiManager;
   // resetSettings() invoca un WiFi.disconnect() que invalida el ssid/pass guardado en la flash
   wifiManager.resetSettings();
@@ -271,13 +260,11 @@ void updateSwitchState (char state) {
 void connectBroker() {
   if (nextBrokerConnAtte <= millis()) {
     nextBrokerConnAtte = millis() + 5000;
-    String mqttClientName = String(location) + "_" + String(name);
-    log(F("Connecting MQTT broker as"), mqttClientName.c_str());
-    if (mqttClient.connect(mqttClientName.c_str())) {
+    log(F("Connecting MQTT broker as"), stationName);
+    if (mqttClient.connect(stationName)) {
       log(F("Connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("reset")], "reset"));
-      mqttClient.subscribe("ESP/state/req");
     } else {
       log(F("Failed. RC:"), mqttClient.state());
     }
