@@ -1,7 +1,7 @@
 #include <FS.h>                   //this needs to be first, or it all crashes and burns...
 
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-// #include <DNSServer.h>
+
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
@@ -15,25 +15,23 @@
 #define PARAM_LENGTH 15
 #define DEBUG true
 
-const char* CONFIG_FILE     = "/config.json";
+const char* CONFIG_FILE             = "/config.json";
 
 /* Config topics */
-char mqttServer[16]         = "192.168.0.105";
-char mqttPort[6]            = "1883";
-char location[PARAM_LENGTH] = "frontRoom";
-char name[PARAM_LENGTH]     = "main";
-char type[PARAM_LENGTH]     = "light";
+char mqttServer[16]                 = "192.168.0.105";
+char mqttPort[6]                    = "1883";
+char location[PARAM_LENGTH]         = "frontRoom";
+char name[PARAM_LENGTH]             = "main";
+char type[PARAM_LENGTH]             = "light";
+
+char stationName[PARAM_LENGTH * 3]   = "";
+char topicBase[PARAM_LENGTH * 3 + 4] = "";
 
 const uint8_t GPIO_2        = 2;
+bool shouldSaveConfig       = false;
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-
-WiFiManagerParameter nameParam("name", "Module name", name, 21);
-WiFiManagerParameter locationParam("location", "Module location", location, 21);
-WiFiManagerParameter typeParam("type", "Module type", type, 21);
-WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
-WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
 
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
@@ -66,36 +64,21 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   loadConfig();
-  // The extra parameters to be configured (can be either global or just in the setup)
-  // After connecting, parameter.getValue() will get you the configured value
-  // id/name placeholder/prompt default length
-    
-  //Local intialization. Once its business is done, there is no need to keep it around
+  // WiFi Manager Config  
   WiFiManager wifiManager;
-
-  //set config save notify callback
   wifiManager.setSaveConfigCallback(saveConfigCallback);
-  wifiManager.setStationNameCallback(stationNameCallback);
-  //set static ip
-  //wifiManager.setSTAStaticIPConfig(IPAddress(10,0,1,99), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
-  
-  //add all your parameters here
+  WiFiManagerParameter locationParam("location", "Module location", location, PARAM_LENGTH);
+  WiFiManagerParameter nameParam("name", "Module name", name, PARAM_LENGTH);
+  WiFiManagerParameter typeParam("type", "Module type", type, PARAM_LENGTH);
+  WiFiManagerParameter mqttServerParam("server", "MQTT Server", mqttServer, 16);
+  WiFiManagerParameter mqttPortParam("port", "MQTT Port", mqttPort, 6);
   wifiManager.addParameter(&mqttServerParam);
   wifiManager.addParameter(&mqttPortParam);
   wifiManager.addParameter(&nameParam);
   wifiManager.addParameter(&locationParam);
   wifiManager.addParameter(&typeParam);
-  
-  //set minimum quality of signal so it ignores AP's under that quality
-  //defaults to 8%
   wifiManager.setMinimumSignalQuality(30);
   
-  //sets timeout until configuration portal gets turned off useful to make it all
-  //retry or go to sleep in seconds wifiManager.setTimeout(120);
-
-  //fetches ssid and pass and tries to connect, if it does not connect it starts an
-  //access point with the specified name here  "AutoConnectAP" and goes into a 
-  //blocking loop awaiting configuration
   if (!wifiManager.autoConnect(("ESP_" + String(ESP.getChipId())).c_str(), "12345678")) {
     log(F("Failed to connect and hit timeout"));
     delay(3000);
@@ -103,37 +86,55 @@ void setup() {
     ESP.reset();
     delay(5000);
   }
-
-  //if you get here you have connected to the WiFi
   log(F("Connected to wifi network"));
 
-  //read updated parameters
-  strcpy(mqttServer, mqttServerParam.getValue());
-  strcpy(mqttPort, mqttPortParam.getValue());
-  strcpy(name, nameParam.getValue());
-  strcpy(location, locationParam.getValue()); 
-  strcpy(type, typeParam.getValue());
+  if (shouldSaveConfig) {
+    shouldSaveConfig = false;
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject& json = jsonBuffer.createObject();
+    json["mqtt_server"] = mqttServerParam.getValue();
+    json["mqtt_port"] = mqttPortParam.getValue();
+    json["name"] = nameParam.getValue();
+    json["location"] = locationParam.getValue();
+    json["type"] = typeParam.getValue();
+    File configFile = SPIFFS.open(CONFIG_FILE, "w");
+    if (configFile) {
+      //json.printTo(Serial);
+      json.printTo(configFile);
+      configFile.close();
+    } else {
+      log(F("Failed to open config file for writing"));
+    }
+    
+    //read updated parameters
+    strcpy(mqttServer, mqttServerParam.getValue());
+    strcpy(mqttPort, mqttPortParam.getValue());
+    strcpy(name, nameParam.getValue());
+    strcpy(location, locationParam.getValue()); 
+    strcpy(type, typeParam.getValue());
+  }
 
   log(F("Local IP"), WiFi.localIP());
-  String port = String(mqttPort);
   log(F("Configuring MQTT broker"));
-  log(F("Server"), mqttServer);
+  String port = String(mqttPort);
   log(F("Port"), port);
+  log(F("Server"), mqttServer);
   mqttClient.setServer(mqttServer, (uint16_t) port.toInt());
   mqttClient.setCallback(mqttCallback);
   pinMode(GPIO_2, OUTPUT);
 
-  // OTA Stuff
+  // OTA Update Stuff
   WiFi.mode(WIFI_AP_STA);
-  //WiFi.begin(ssid, password);
+  String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
+  buff.toCharArray(stationName, buff.length() + 1);
+  MDNS.begin(stationName);
 
-  // while(WiFi.waitForConnectResult() != WL_CONNECTED){
-  //   WiFi.begin(ssid, password);
-  //   Serial.println("WiFi failed, retrying.");
-  // }
-  char* host = stationNameCallback(new char[50]);
-  MDNS.begin(host);
+  buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
+  buff.toCharArray(topicBase, buff.length() + 1);
 
+  log("Station name", stationName);
+  log("Topic Base", topicBase);
+  
   httpUpdater.setup(&httpServer);
   httpServer.begin();
 
@@ -164,7 +165,6 @@ void loadConfig() {
           JsonObject& json = jsonBuffer.parseObject(buf.get());
           json.printTo(Serial);
           if (json.success()) {
-            log(F("\nParsed json"));
             strcpy(mqttServer, json["mqtt_server"]);
             strcpy(mqttPort, json["mqtt_port"]);
             strcpy(name, json["name"]);
@@ -189,34 +189,11 @@ void loadConfig() {
 
 /** callback notifying the need to save config */
 void saveConfigCallback () {
-  log(F("Saving config"));
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& json = jsonBuffer.createObject();
-  json["mqtt_server"] = mqttServerParam.getValue();
-  json["mqtt_port"] = mqttPortParam.getValue();
-  json["name"] = nameParam.getValue();
-  json["location"] = locationParam.getValue();
-  json["type"] = typeParam.getValue();
-  File configFile = SPIFFS.open(CONFIG_FILE, "w");
-  if (!configFile) {
-    log(F("Failed to open config file for writing"));
-  }
-  json.printTo(Serial);
-  json.printTo(configFile);
-  configFile.close();
-}
-  
-char* stationNameCallback(char* sn) {
-  String buff = String(locationParam.getValue()) + String(F("_")) + String(typeParam.getValue()) + String(F("_")) + String(nameParam.getValue());
-  buff.toCharArray(sn, buff.length() + 1);
-  return sn;
+  shouldSaveConfig = true;
+  log(F("shouldSaveConfig"), shouldSaveConfig);
 }
 
 void loop() {
-  moduleRun();
-}
-
-void moduleRun () {
   httpServer.handleClient();
   if (!mqttClient.connected()) {
     connectBroker();
@@ -308,11 +285,11 @@ void connectBroker() {
 }
 
 uint8_t getTopicLength(const char* wich) {
-  return strlen(type) + strlen(location) + strlen(name) + strlen(wich) + 4;
+  return strlen(topicBase) + strlen(wich);
 }
 
 char* getTopic(char* topic, const char* wich) {
-  String buff = String(type) + String(F("/")) + String(location) + String(F("/")) + String(name) + String(F("/")) + String(wich);
+  String buff = topicBase + String(wich);
   buff.toCharArray(topic, buff.length() + 1);
   log(F("Topic"), topic);
   return topic;
