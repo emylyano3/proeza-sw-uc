@@ -173,25 +173,42 @@ void mqttCallback(char* topic, unsigned char* payload, unsigned int length) {
   log(F("mqtt message"), topic);
   if (String(topic).equals(String(getTopic(new char[getTopicLength("cmd")], "cmd")))) {
     processSwitchCommand(payload, length);
-  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("reset")], "reset")))) {
-    resetModule();
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("rst")], "rst")))) {
+    reset();
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("hrst")], "hrst")))) {
+    hardReset();
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("rtt")], "rtt")))) {
+    restart();
+  } else if (String(topic).equals(String(getTopic(new char[getTopicLength("echo")], "echo")))) {
+    publishState();
   } else {
     log(F("Unknown topic"));
   }
 }
 
-void resetModule () {
+void hardReset () {
+  log(F("Doing a module hard reset"));
+  SPIFFS.format();
+  delay(200);
+  reset();
+}
+
+void reset () {
   log(F("Reseting module configuration"));
   WiFiManager wifiManager;
-  // resetSettings() invoca un WiFi.disconnect() que invalida el ssid/pass guardado en la flash
   wifiManager.resetSettings();
   delay(200);
-  // Es mejor no eliminar la configuracion del modulo para que en el siguiente
-  // boot la configuracion persistida se muestre al usuario en el portal de configuracion
-  // SPIFFS.format();
-  // delay(200);
+  restart();
+}
+
+void restart () {
+  log(F("Restarting module"));
   ESP.restart();
   delay(2000);
+}
+
+void publishState () {
+  mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), new char[2]{currSwitchState, '\0'});
 }
 
 void processSwitchCommand(unsigned char* payload, unsigned int length) {
@@ -212,7 +229,7 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
       log(F("Invalid state"), payload[0]);
     return;
   } 
-  mqttClient.publish(getTopic(new char[getTopicLength("state")], "state"), new char[2]{payload[0], '\0'});
+  publishState();
 }
 
 void updateSwitchState (char state) {
@@ -252,7 +269,10 @@ void connectBroker() {
     if (mqttClient.connect(getStationName())) {
       log(F("Connected"));
       mqttClient.subscribe(getTopic(new char[getTopicLength("cmd")], "cmd"));
-      mqttClient.subscribe(getTopic(new char[getTopicLength("reset")], "reset"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("rst")], "rst"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("hrst")], "hrst"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("rtt")], "rtt"));
+      mqttClient.subscribe(getTopic(new char[getTopicLength("echo")], "echo"));
     } else {
       log(F("Failed. RC:"), mqttClient.state());
     }
@@ -266,6 +286,5 @@ uint8_t getTopicLength(const char* wich) {
 char* getTopic(char* topic, const char* wich) {
   String buff = topicBase + String(wich);
   buff.toCharArray(topic, buff.length() + 1);
-  log(F("Topic"), topic);
   return topic;
 }
