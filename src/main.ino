@@ -13,7 +13,6 @@
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
 #define PARAM_LENGTH 15
-// #define DEBUG true
 
 const char* CONFIG_FILE   = "/config.json";
 
@@ -39,6 +38,7 @@ const char STATE_OFF     = '0';
 const char STATE_ON      = '1';
 
 char currSwitchState = STATE_OFF;
+int lastInputRead;
 
 long nextBrokerConnAtte = 0;
 
@@ -93,8 +93,12 @@ void setup() {
   log(F("Server"), mqttServerParam.getValue());
   mqttClient.setServer(mqttServerParam.getValue(), (uint16_t) port.toInt());
   mqttClient.setCallback(mqttCallback);
-  pinMode(CONTROL_PIN, OUTPUT);
   
+  // pins settings
+  pinMode(CONTROL_PIN, OUTPUT);
+  pinMode(INPUT_PIN, INPUT);
+  lastInputRead = digitalRead(INPUT_PIN);
+
   // Building topics base
   String buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
   buff.toCharArray(topicBase, buff.length() + 1);
@@ -170,6 +174,7 @@ void saveConfigCallback () {
 
 void loop() {
   httpServer.handleClient();
+  readPhysicalInput();
   if (!mqttClient.connected()) {
     connectBroker();
   }
@@ -237,6 +242,16 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
     return;
   } 
   publishState();
+}
+
+void readPhysicalInput() {
+  int read = digitalRead(INPUT_PIN);
+  if (read != lastInputRead) {
+    log(F("Phisical switch state has changed. Updating module"));
+    lastInputRead = read;
+    updateSwitchState(currSwitchState == STATE_OFF ? STATE_ON : STATE_OFF);
+    publishState();
+  }
 }
 
 void updateSwitchState (char state) {
