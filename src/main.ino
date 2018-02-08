@@ -13,10 +13,17 @@
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
 #define PARAM_LENGTH 15
-#define DEBUG true
+// #define DEBUG true
 
 const char* CONFIG_FILE   = "/config.json";
-const uint8_t GPIO_2      = 2;
+
+#ifdef NODEMCUV2_PINS
+  const uint8_t CONTROL_PIN     = D2;
+  const uint8_t INPUT_PIN       = D4;
+#else
+  const uint8_t CONTROL_PIN     = 2;
+  const uint8_t INPUT_PIN       = 4;
+#endif
 
 char stationName[PARAM_LENGTH * 3 + 4];
 char topicBase[PARAM_LENGTH * 3 + 4];
@@ -42,14 +49,14 @@ WiFiManagerParameter typeParam("type", "Module type", "light", PARAM_LENGTH);
 WiFiManagerParameter nameParam("name", "Module name", "ceiling", PARAM_LENGTH);
 
 template <class T> void log (T text) {
-  if (DEBUG) {
+  if (LOGGING) {
     Serial.print("*SW: ");
     Serial.println(text);
   }
 }
 
 template <class T, class U> void log (T key, U value) {
-  if (DEBUG) {
+  if (LOGGING) {
     Serial.print("*SW: ");
     Serial.print(key);
     Serial.print(": ");
@@ -86,7 +93,7 @@ void setup() {
   log(F("Server"), mqttServerParam.getValue());
   mqttClient.setServer(mqttServerParam.getValue(), (uint16_t) port.toInt());
   mqttClient.setCallback(mqttCallback);
-  pinMode(GPIO_2, OUTPUT);
+  pinMode(CONTROL_PIN, OUTPUT);
   
   // Building topics base
   String buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
@@ -240,10 +247,10 @@ void updateSwitchState (char state) {
   currSwitchState = state;
   switch (state) {
     case STATE_OFF:
-      digitalWrite(GPIO_2, HIGH);
+      digitalWrite(CONTROL_PIN, HIGH);
       break;
     case STATE_ON:
-      digitalWrite(GPIO_2, LOW);
+      digitalWrite(CONTROL_PIN, LOW);
       break;
     default:
       break;
