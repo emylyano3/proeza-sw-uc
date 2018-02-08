@@ -17,7 +17,7 @@
 
 const char* CONFIG_FILE   = "/config.json";
 
-#ifdef NODEMCUV2_PINS
+#ifdef NODEMCUV2
   const uint8_t CONTROL_PIN     = D2;
   const uint8_t INPUT_PIN       = D4;
 #else
