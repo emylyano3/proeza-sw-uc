@@ -3,7 +3,7 @@
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
 
 #include <ESP8266WebServer.h>
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+#include <WiFiManager.h>
 
 #include <WiFiClient.h>
 #include <ESP8266mDNS.h>
@@ -17,8 +17,11 @@
 const char* CONFIG_FILE   = "/config.json";
 
 #ifdef NODEMCUV2
-  const uint8_t CONTROL_PIN     = D2;
+  const uint8_t CONTROL_PIN     = D3;
   const uint8_t INPUT_PIN       = D4;
+#elif ESP01
+  const uint8_t CONTROL_PIN     = 2;
+  const uint8_t INPUT_PIN       = 0;
 #else
   const uint8_t CONTROL_PIN     = 2;
   const uint8_t INPUT_PIN       = 4;
@@ -68,6 +71,12 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   loadConfig();
+    
+  // pins settings
+  pinMode(CONTROL_PIN, OUTPUT);
+  pinMode(INPUT_PIN, INPUT);
+  digitalWrite(INPUT_PIN, HIGH);
+  
   // WiFi Manager Config  
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -93,11 +102,6 @@ void setup() {
   log(F("Server"), mqttServerParam.getValue());
   mqttClient.setServer(mqttServerParam.getValue(), (uint16_t) port.toInt());
   mqttClient.setCallback(mqttCallback);
-  
-  // pins settings
-  pinMode(CONTROL_PIN, OUTPUT);
-  pinMode(INPUT_PIN, INPUT);
-  lastInputRead = digitalRead(INPUT_PIN);
 
   // Building topics base
   String buff = String(locationParam.getValue()) + String(F("/")) + String(typeParam.getValue()) + String(F("/")) + String(nameParam.getValue()) + String(F("/"));
@@ -262,10 +266,10 @@ void updateSwitchState (char state) {
   currSwitchState = state;
   switch (state) {
     case STATE_OFF:
-      digitalWrite(CONTROL_PIN, HIGH);
+      digitalWrite(CONTROL_PIN, LOW);
       break;
     case STATE_ON:
-      digitalWrite(CONTROL_PIN, LOW);
+      digitalWrite(CONTROL_PIN, HIGH);
       break;
     default:
       break;
