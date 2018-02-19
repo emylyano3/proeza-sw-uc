@@ -46,7 +46,7 @@ int lastInputRead;
 long nextBrokerConnAtte = 0;
 
 WiFiManagerParameter mqttServerParam("server", "MQTT Server", "192.168.0.105", 16);
-WiFiManagerParameter mqttPortParam("port", "MQTT Port", "1", 6);
+WiFiManagerParameter mqttPortParam("port", "MQTT Port", "1883", 6);
 WiFiManagerParameter locationParam("location", "Module location", "room", PARAM_LENGTH);
 WiFiManagerParameter typeParam("type", "Module type", "light", PARAM_LENGTH);
 WiFiManagerParameter nameParam("name", "Module name", "ceiling", PARAM_LENGTH);
