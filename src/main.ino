@@ -17,14 +17,15 @@
 const char* CONFIG_FILE   = "/config.json";
 
 #ifdef NODEMCUV2
-  const uint8_t CONTROL_PIN     = D3;
-  const uint8_t INPUT_PIN       = D4;
+  const uint8_t RELAY_PIN     = D3;
+  const uint8_t SWITCH_PIN    = D4;
 #elif ESP01
-  const uint8_t CONTROL_PIN     = 2;
-  const uint8_t INPUT_PIN       = 0;
+  const uint8_t RELAY_PIN     = 2;
+  const uint8_t SWITCH_PIN    = 3;
+  const uint8_t TX_PIN        = 1;
 #else
-  const uint8_t CONTROL_PIN     = 2;
-  const uint8_t INPUT_PIN       = 4;
+  const uint8_t RELAY_PIN     = 2;
+  const uint8_t SWITCH_PIN    = 4;
 #endif
 
 char stationName[PARAM_LENGTH * 3 + 4];
@@ -68,22 +69,30 @@ template <class T, class U> void log (T key, U value) {
 }
 
 void setup() {
+#ifdef ESP01
+  //to avoid using pin 0 as input
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY, TX_PIN);
+#else
   Serial.begin(115200);
+#endif
   delay(500);
-  loadConfig();
+  Serial.println();
+  log("Starting module");
+  bool existConfig = loadConfig();
     
   // pins settings
-  pinMode(CONTROL_PIN, OUTPUT);
-  pinMode(INPUT_PIN, INPUT);
-  digitalWrite(INPUT_PIN, HIGH);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT);
+  digitalWrite(SWITCH_PIN, HIGH);
   
   // WiFi Manager Config  
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   wifiManager.setStationNameCallback(buildStationName);
   wifiManager.setMinimumSignalQuality(WIFI_MIN_SIGNAL);
-  wifiManager.setConnectTimeout(WIFI_CONN_TIMEOUT);
-  wifiManager.setMaxConnRetries(WIFI_CONN_RETRIES);
+  if (existConfig) {
+    wifiManager.setConnectTimeout(WIFI_CONN_TIMEOUT);
+  }
   wifiManager.addParameter(&mqttServerParam);
   wifiManager.addParameter(&mqttPortParam);
   wifiManager.addParameter(&locationParam);
@@ -111,7 +120,7 @@ void setup() {
   log(F("Topics Base"), topicBase);
 
   // OTA Update Stuff
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
   MDNS.begin(getStationName());
   httpUpdater.setup(&httpServer);
   httpServer.begin();
@@ -121,7 +130,7 @@ void setup() {
   Serial.println(F("/update in your browser"));
 }
 
-void loadConfig() { 
+bool loadConfig() { 
   //read configuration from FS json
   if (SPIFFS.begin()) {
     if (SPIFFS.exists(CONFIG_FILE)) {
@@ -142,6 +151,7 @@ void loadConfig() {
             nameParam.update(json["name"]);
             locationParam.update(json["location"]);
             typeParam.update(json["type"]);
+            return true;
           } else {
             log(F("Failed to load json config"));
           }
@@ -157,6 +167,7 @@ void loadConfig() {
   } else {
     log(F("Failed to mount FS"));
   }
+  return false;
 }
 
 /** callback notifying the need to save config */
@@ -251,7 +262,7 @@ void processSwitchCommand(unsigned char* payload, unsigned int length) {
 }
 
 void readPhysicalInput() {
-  int read = digitalRead(INPUT_PIN);
+  int read = digitalRead(SWITCH_PIN);
   if (read != lastInputRead) {
     log(F("Phisical switch state has changed. Updating module"));
     lastInputRead = read;
@@ -268,10 +279,10 @@ void updateSwitchState (char state) {
   currSwitchState = state;
   switch (state) {
     case STATE_OFF:
-      digitalWrite(CONTROL_PIN, LOW);
+      digitalWrite(RELAY_PIN, LOW);
       break;
     case STATE_ON:
-      digitalWrite(CONTROL_PIN, HIGH);
+      digitalWrite(RELAY_PIN, HIGH);
       break;
     default:
       break;
