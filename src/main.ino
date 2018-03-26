@@ -174,6 +174,8 @@ bool loadConfig() {
               } else {
                 log("ERROR. Unknown key");
               }
+            } else {
+              log("Config bad format", line);
             }
           }
           return true;
