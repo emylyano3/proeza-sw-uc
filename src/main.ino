@@ -3,14 +3,20 @@
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
 
 #include <ESP8266WebServer.h>
-#include <WiFiManager.h>
+
+// Alternativa a WifiManager
+// https://github.com/chriscook8/esp-arduino-apboot/blob/master/ESP-wifiboot.ino
+#include <WiFiManager.h>          
 
 #include <WiFiClient.h>
-#include <ESP8266mDNS.h>
 #include <ESP8266HTTPUpdateServer.h>
 
 #include <PubSubClient.h>
+
+#ifndef ESP01
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+#include <ESP8266mDNS.h>
+#endif
 
 #define PARAM_LENGTH 15
 
@@ -76,6 +82,7 @@ void setup() {
   Serial.begin(115200);
 #endif
   delay(500);
+  // SPIFFS.format();
   Serial.println();
   log("Starting module");
   bool existConfig = loadConfig();
@@ -92,6 +99,9 @@ void setup() {
   wifiManager.setMinimumSignalQuality(WIFI_MIN_SIGNAL);
   if (existConfig) {
     wifiManager.setConnectTimeout(WIFI_CONN_TIMEOUT);
+  } else {
+    // If no previous config, no reason to try to connect to saved network. Wifi.diconnect() erases saved credentials
+    WiFi.disconnect();
   }
   wifiManager.addParameter(&mqttServerParam);
   wifiManager.addParameter(&mqttPortParam);
@@ -121,10 +131,12 @@ void setup() {
 
   // OTA Update Stuff
   WiFi.mode(WIFI_STA);
+  #ifndef ESP01
   MDNS.begin(getStationName());
+  MDNS.addService("http", "tcp", 80);
+  #endif
   httpUpdater.setup(&httpServer);
   httpServer.begin();
-  MDNS.addService("http", "tcp", 80);
   Serial.print(F("HTTPUpdateServer ready! Open http://"));
   Serial.print(WiFi.localIP().toString());
   Serial.println(F("/update in your browser"));
@@ -139,6 +151,33 @@ bool loadConfig() {
       if (configFile) {
         size_t size = configFile.size();
         if (size > 0) {
+          #ifdef ESP01
+          while (configFile.position() < configFile.size()) {
+            String line = configFile.readStringUntil('\n');
+            line.trim();
+            uint16_t ioc = line.indexOf('=');
+            if (ioc >= 0 && ioc + 1 < line.length()) {
+              String key = line.substring(0, ioc++);
+              log("Read key", key);
+              String val = line.substring(ioc, line.length());
+              log("Key value", val);
+              if (key.equals(mqttPortParam.getID())) {
+                mqttPortParam.update(val.c_str());
+              } else if (key.equals(mqttServerParam.getID())) {
+                mqttServerParam.update(val.c_str());
+              } else if (key.equals(locationParam.getID())) {
+                locationParam.update(val.c_str());
+              } else if (key.equals(nameParam.getID())) {
+                nameParam.update(val.c_str());
+              } else if (key.equals(typeParam.getID())) {
+                typeParam.update(val.c_str());
+              } else {
+                log("ERROR. Unknown key");
+              }
+            }
+          }
+          return true;
+          #else
           // Allocate a buffer to store contents of the file.
           std::unique_ptr<char[]> buf(new char[size]);
           configFile.readBytes(buf.get(), size);
@@ -155,12 +194,14 @@ bool loadConfig() {
           } else {
             log(F("Failed to load json config"));
           }
+          #endif
         } else {
           log(F("Config file empty"));
         }
       } else {
         log(F("No config file found"));
       }
+      configFile.close();
     } else {
       log(F("No config file found"));
     }
@@ -172,21 +213,34 @@ bool loadConfig() {
 
 /** callback notifying the need to save config */
 void saveConfigCallback () {
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& json = jsonBuffer.createObject();
-  json["mqtt_server"] = mqttServerParam.getValue();
-  json["mqtt_port"] = mqttPortParam.getValue();
-  json["name"] = nameParam.getValue();
-  json["location"] = locationParam.getValue();
-  json["type"] = typeParam.getValue();
   File configFile = SPIFFS.open(CONFIG_FILE, "w");
   if (configFile) {
+  #ifdef ESP01
+    String line = String(mqttServerParam.getID()) + "=" + String(mqttServerParam.getValue());
+    configFile.println(line);
+    line = String(mqttPortParam.getID()) + "=" + String(mqttPortParam.getValue());
+    configFile.println(line);
+    line = String(nameParam.getID()) + "=" + String(nameParam.getValue());
+    configFile.println(line);
+    line = String(locationParam.getID()) + "=" + String(locationParam.getValue());
+    configFile.println(line);
+    line = String(typeParam.getID()) + "=" + String(typeParam.getValue());
+    configFile.println(line);
+  #else
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject& json = jsonBuffer.createObject();
+    json["mqtt_server"] = mqttServerParam.getValue();
+    json["mqtt_port"] = mqttPortParam.getValue();
+    json["name"] = nameParam.getValue();
+    json["location"] = locationParam.getValue();
+    json["type"] = typeParam.getValue();
     //json.printTo(Serial);
     json.printTo(configFile);
-    configFile.close();
+  #endif
   } else {
     log(F("Failed to open config file for writing"));
   }
+  configFile.close();
 }
 
 void loop() {
