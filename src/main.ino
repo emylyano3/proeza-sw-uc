@@ -151,8 +151,8 @@ bool loadConfig() {
       if (configFile) {
         size_t size = configFile.size();
         if (size > 0) {
-          #ifdef ESP01
-          while (configFile.position() < configFile.size()) {
+        #ifdef ESP01
+          while (configFile.position() < size) {
             String line = configFile.readStringUntil('\n');
             line.trim();
             uint16_t ioc = line.indexOf('=');
@@ -177,7 +177,7 @@ bool loadConfig() {
             }
           }
           return true;
-          #else
+        #else
           // Allocate a buffer to store contents of the file.
           std::unique_ptr<char[]> buf(new char[size]);
           configFile.readBytes(buf.get(), size);
@@ -194,7 +194,7 @@ bool loadConfig() {
           } else {
             log(F("Failed to load json config"));
           }
-          #endif
+        #endif
         } else {
           log(F("Config file empty"));
         }
